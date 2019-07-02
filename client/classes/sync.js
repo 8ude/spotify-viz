@@ -8,14 +8,14 @@ import ease from '../util/easing'
 
 /**
  * @class Sync
- * 
+ *
  * Creates an interface for analyzing a playing Spotify track in real time.
- * Exposes event hooks for reacting to changes in intervals. 
+ * Exposes event hooks for reacting to changes in intervals.
  */
 export default class Sync {
   constructor ({
-    volumeSmoothing = 100,
-    pingDelay = 2500
+    volumeSmoothing = 1,
+    pingDelay = 1000
   } = {}) {
     const accessToken = cookies.get('SPOTIFY_ACCESS_TOKEN')
     const refreshToken = cookies.get('SPOTIFY_REFRESH_TOKEN')
@@ -66,7 +66,7 @@ export default class Sync {
   }
 
   /**
-   * @method initHooks - Initialize interval event hooks. 
+   * @method initHooks - Initialize interval event hooks.
    */
   initHooks () {
     this.hooks = {
@@ -85,14 +85,14 @@ export default class Sync {
   }
 
   /**
-   * @method ping - Ask Spotify for currently playing track, after a specified delay. 
+   * @method ping - Ask Spotify for currently playing track, after a specified delay.
    */
   ping () {
     setTimeout(() => this.getCurrentlyPlaying(), this.state.api.pingDelay)
   }
 
   /**
-   * @method getNewToken - Retrieve new access token from server. 
+   * @method getNewToken - Retrieve new access token from server.
    */
   async getNewToken () {
     const { data } = await get(`${PROJECT_ROOT}/refresh?token=${this.state.api.tokens.refreshToken}`)
@@ -128,7 +128,7 @@ export default class Sync {
 
   /**
    * @method processResponse - Process `currently playing` API response according to state.
-   * @param {object} data - Response from Spotify API. 
+   * @param {object} data - Response from Spotify API.
    */
   processResponse (data) {
     const songsInSync = (JSON.stringify(data.item) === JSON.stringify(this.state.currentlyPlaying))
@@ -139,10 +139,10 @@ export default class Sync {
 
     this.ping()
   }
-  
+
   /**
    * @method getTrackInfo - Fetch track analysis and track features of currently playing track.
-   * @param {object} data - Response from Spotify API. 
+   * @param {object} data - Response from Spotify API.
    */
   async getTrackInfo (data) {
     const tick = window.performance.now()
@@ -198,7 +198,7 @@ export default class Sync {
         if (analysis[i].start < progress && progress < analysis[i + 1].start) return i
       }
     }
-  
+
     this.state.intervalTypes.forEach(type => {
       const index = determineInterval(type)
       if (!this.state.activeIntervals[type].start || index !== this.state.activeIntervals[type].index) {
@@ -213,7 +213,7 @@ export default class Sync {
   }
 
   /**
-   * @method getVolume - Extract volume data from active segment. 
+   * @method getVolume - Extract volume data from active segment.
    */
   getVolume () {
     const {
@@ -227,10 +227,10 @@ export default class Sync {
     } = this.state.activeIntervals.segments
 
     if (!this.state.trackAnalysis.segments[index + 1]) return 0
-    
+
     const next = this.state.trackAnalysis.segments[index + 1].loudness_start
     const current = start + elapsed
-  
+
     if (elapsed < loudness_max_time) {
       const progress = Math.min(1, elapsed / loudness_max_time)
       return interpolate(loudness_start, loudness_max)(progress)
@@ -245,8 +245,8 @@ export default class Sync {
 
   /**
    * @method watch - Convenience method for watching data store.
-   * @param {string} key 
-   * @param {function} method 
+   * @param {string} key
+   * @param {function} method
    */
   watch (key, method) {
     this.state.watch(key, method)
@@ -254,15 +254,15 @@ export default class Sync {
 
   /**
    * @method on - Convenience method for applying interval hooks.
-   * @param {string} - Interval type. 
-   * @param {function} - Event handler. 
+   * @param {string} - Interval type.
+   * @param {function} - Event handler.
    */
   on (interval, method) {
     this.hooks[interval] = method
   }
 
   /**
-   * @getter isActive - Returns if class is actively syncing with a playing track. 
+   * @getter isActive - Returns if class is actively syncing with a playing track.
    */
   get isActive () {
     return this.state.active === true
@@ -275,7 +275,7 @@ export default class Sync {
   get segment () {
     return this.state.activeIntervals.segments
   }
-  
+
   get beat () {
     return this.state.activeIntervals.beats
   }
@@ -297,8 +297,8 @@ export default class Sync {
   }
 
   /**
-   * @method tick - A single update tick from the Sync loop. 
-   * @param {DOMHighResTimeStamp} now 
+   * @method tick - A single update tick from the Sync loop.
+   * @param {DOMHighResTimeStamp} now
    */
   tick (now) {
     requestAnimationFrame(this.tick.bind(this))

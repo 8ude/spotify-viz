@@ -31,7 +31,8 @@
     "express-history-api-fallback": "^2.2.1",
     "querystring": "^0.2.0",
     "regenerator-runtime": "^0.13.2",
-    "request": "^2.88.0"
+    "request": "^2.88.0",
+    "three": "^0.106.2"
   },
   "devDependencies": {
     "@babel/core": "^7.2.2",

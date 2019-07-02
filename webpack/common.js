@@ -5,11 +5,14 @@ const HtmlWebpackPlugin = require('html-webpack-plugin')
 const ScriptExtHtmlWebpackPlugin = require('script-ext-html-webpack-plugin')
 const webpack = require('webpack')
 
+
+
 module.exports = {
   entry: [
     'regenerator-runtime',
     './client/index.js',
-    './client/sass/main.scss'
+    './client/sass/main.scss',
+    './client/js/helloholo.js'
   ],
   module: {
     rules: [
