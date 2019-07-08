@@ -2,6 +2,7 @@
 //All rights reserved.
 //Unauthorized copying or distribution of this file, and the source code contained herein, is strictly prohibited.
 
+
 function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiResRender){
     //Version 0.2.3
 
@@ -178,7 +179,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
 
     };
 
-    //******HTML SETUP******//
+    // ******HTML SETUP******
 
     //Create the dom element for the fullscreen button
     function makeFullScreenButton(){

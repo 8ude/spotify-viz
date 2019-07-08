@@ -1,5 +1,9 @@
 //Basic elements for a Three.js/HoloPlay scene
-var THREE = require('three');
+
+//note - require is a node/webpack thing
+//var THREE = require('three');
+
+import * as THREE from 'three';
 import Sync from '../classes/sync';
 
 //Copyright 2017-2019 Looking Glass Factory Inc.
@@ -14,6 +18,8 @@ My normal method of using an html script tags doesn't seem to work with webpack.
 Including the holoplay.js filepath in common.js didn't work either.
 In short, version one of my app may consist of one really long file, defeating the purpose of webpack.
 */
+
+
 
 function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiResRender){
     //Version 0.2.3
@@ -47,9 +53,16 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
     //Render scenes
     var bufferMat, bufferSceneRender, finalRenderScene, finalRenderCamera;
 
+    // Create a different scene to hold our buffer objects
+    var frameBufferScene = new THREE.Scene();
+    // Create the texture that will store our result
+    var frameBufferTexture = new THREE.WebGLRenderTarget( window.innerWidth, window.innerHeight, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter});
+
     //Looking Glass buttons
     var buttons, buttonsLastFrame, buttonsAvailable;
     var buttonNames = [ "square", "left", "right", "circle" ];
+
+
 
     //A public bool to indicate if you want to use buttons - set to "false" if not to save processing time
     this.useButtons = true;
@@ -139,6 +152,9 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
         var uniforms =
         {
             quiltTexture: {value: bufferSceneRender.texture},
+            //frame buffer effect
+            //bufferQuiltTexture: {value: bufferQuiltTexture.texture},
+
             pitch: {value:0},
             tilt: {value:0},
             center: {value:0},
@@ -191,7 +207,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
 
     };
 
-    //******HTML SETUP******//
+    // ******HTML SETUP******
 
     //Create the dom element for the fullscreen button
     function makeFullScreenButton(){
@@ -484,6 +500,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
 
             renderer.setRenderTarget(null);
             renderer.render(finalRenderScene, finalRenderCamera);
+            renderer.render(frameBufferScene, finalRenderCamera, frameBufferTexture);
         }
     };
 
@@ -557,8 +574,12 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
         "}";
 
     //Not all uniforms are used, some are intended for future features
+    //Corey - Added
     var FragmentShaderCode =
         "uniform sampler2D quiltTexture;"+
+        //frame buffer effect
+        //"uniform sampler2D bufferQuiltTexture"+
+
         "uniform float pitch;"+
         "uniform float tilt;"+
         "uniform float center;"+
@@ -615,6 +636,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
     init();
 }
 
+
 var scene, camera, renderer, holoplay;
 
 //Lighting elements
@@ -626,8 +648,23 @@ var cubeGeometry;
 var cubeMaterial;
 var cubes;
 
+//shader uniforms
+var uniforms;
+//icosahedron with moving vertices
+var icos;
+
+var displacement, noise;
+
+//adjust displacement on beat;
+var displacementMult;
+
+var trackData;
+
 //music visualization things
-var sync;
+var sync = new Sync();
+sync.on('tatum', tatum => {
+  OnBeat();
+})
 
 //Initialize our variables
 function init(){
@@ -643,17 +680,48 @@ function init(){
   scene.add(directionalLight);
   ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.4);
   scene.add(ambientLight);
-  cubes = [];
-  cubeGeometry = new THREE.BoxGeometry(1,1,1);
-  cubeMaterial = new THREE.MeshLambertMaterial();
-  for(var i = 0; i < 3; i++){
-    cubes.push(new THREE.Mesh(cubeGeometry, cubeMaterial));
-    cubes[i].position.set(1 - i, 1 - i, 1 - i);
-    scene.add(cubes[i]);
-  }
+
+
+
+
+
+
+  //New Code - trying to get the buffer geo and shader to work
+
+  uniforms = {
+  					"amplitude": { value: 1.0 },
+  					"color": { value: new THREE.Color( 0xff2200 ) },
+  };
+  var shaderMaterial = new THREE.ShaderMaterial( {
+    uniforms: uniforms,
+    vertexShader: document.getElementById( 'vertexshader' ).textContent,
+    fragmentShader: document.getElementById( 'fragmentshader' ).textContent
+  } );
+
+  var icoGeometry = new THREE.IcosahedronBufferGeometry(1, 3);
+
+  displacement = new Float32Array( icoGeometry.attributes.position.count );
+	noise = new Float32Array( icoGeometry.attributes.position.count );
+
+
+
+	for ( var i = 0; i < displacement.length; i ++ ) {
+	   noise[ i ] = Math.random() * 5;
+	}
+
+  icoGeometry.addAttribute( 'displacement', new THREE.BufferAttribute( displacement, 1 ) );
+
+	icos = new THREE.Mesh( icoGeometry, shaderMaterial );
+	scene.add( icos );
+
+  displacementMult = 1.0;
+
+
 
   //music Viz -- init Sync
   sync = new Sync();
+
+  //console.log(sync.trackFeatures);
 
 }
 
@@ -669,12 +737,45 @@ window.addEventListener('resize', function(){
 //Render the scene
 function draw(){
   //synchronize functions here
-  for(var i = 0; i < cubes.length; i++){
-    cubes[i].scale.set(sync.volume, sync.volume, sync.volume);
+
+
+  //adjusting noise ball
+  var time = Date.now() * 0.01;
+
+  if (displacementMult > 0.1) {
+    displacementMult -= 0.05;
   }
 
+  uniforms[ "amplitude" ].value = displacementMult + 0.3 * Math.sin( time * 0.01 * 0.125 );
+	uniforms[ "color" ].value.offsetHSL( 0.001 * Math.sin( time * 0.00001 ), 0, 0 );
+	for ( var i = 0; i < displacement.length; i ++ ) {
+	   displacement[ i ] = 0.1 * Math.sin( 0.1 * i + time ) + displacementMult;
+     noise[ i ] += 0.25 * ( 0.5 - Math.random() );
+     noise[ i ] = THREE.Math.clamp( noise[ i ], - 1, 1 );
+     displacement[ i ] += (noise[ i ] * sync.volume);
+	}
+
+  icos.geometry.attributes.displacement.needsUpdate = true;
+
+  GetTrackAnalysis();
 
   holoplay.render();
+}
+
+
+
+function OnBeat() {
+    displacementMult += 0.6;
+    //console.log("beat");
+}
+
+function OnBar() {
+
+}
+
+function GetTrackAnalysis() {
+   //trackData = JSON.parse(sync.trackFeatures);
+   //console.log(sync.trackFeatures.valence);
 }
 
 //Game loop

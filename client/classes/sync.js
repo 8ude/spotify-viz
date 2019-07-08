@@ -15,7 +15,7 @@ import ease from '../util/easing'
 export default class Sync {
   constructor ({
     volumeSmoothing = 1,
-    pingDelay = 1000
+    pingDelay = 2500
   } = {}) {
     const accessToken = cookies.get('SPOTIFY_ACCESS_TOKEN')
     const refreshToken = cookies.get('SPOTIFY_REFRESH_TOKEN')
@@ -46,8 +46,12 @@ export default class Sync {
         sections: {}
       }),
       currentlyPlaying: {},
-      trackAnalysis: {},
-      trackFeatures: {},
+      trackAnalysis: {
+
+      },
+      trackFeatures: {
+        valence: {}
+      },
       initialTrackProgress: 0,
       initialStart: 0,
       trackProgress: 0,
