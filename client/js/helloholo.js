@@ -54,14 +54,15 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
     var bufferMat, bufferSceneRender, finalRenderScene, finalRenderCamera;
 
     // Create a different scene to hold our buffer objects
-    var frameBufferScene = new THREE.Scene();
+    var bufferFeedbackScene
     // Create the texture that will store our result
-    var frameBufferTexture = new THREE.WebGLRenderTarget( window.innerWidth, window.innerHeight, { minFilter: THREE.LinearFilter, magFilter: THREE.NearestFilter});
+    var bufferFeedbackRender
 
     //Looking Glass buttons
     var buttons, buttonsLastFrame, buttonsAvailable;
     var buttonNames = [ "square", "left", "right", "circle" ];
 
+    var bufferFeedbackTexture;
 
 
     //A public bool to indicate if you want to use buttons - set to "false" if not to save processing time
@@ -122,7 +123,10 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
             tilesY = 9;
         }
 
+        bufferFeedbackScene = new THREE.Scene();
+
         bufferSceneRender = new THREE.WebGLRenderTarget(renderResolution, renderResolution, {format: THREE.RGBFormat});
+        bufferFeedbackRender = new THREE.WebGLRenderTarget( renderResolution, renderResolution, {format: THREE.RGBFormat});
 
          //Capture settings
         numViews = tilesX * tilesY;
@@ -153,7 +157,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
         {
             quiltTexture: {value: bufferSceneRender.texture},
             //frame buffer effect
-            //bufferQuiltTexture: {value: bufferQuiltTexture.texture},
+            bufferQuiltTexture: {value: bufferFeedbackRender.texture},
 
             pitch: {value:0},
             tilt: {value:0},
@@ -361,6 +365,8 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
     //Render the different views
     function captureViews(scene, camera)
     {
+
+
         var origPosition = new THREE.Vector3(camera.position.x, camera.position.y, camera.position.z);
         var start = -viewCone/2;
         var end = viewCone/2;
@@ -390,7 +396,12 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
             subcamera.projectionMatrix.elements[8] = -2 * offsetX / (size * camera.aspect);
         }
 
+
         renderer.setRenderTarget(bufferSceneRender);
+        renderer.render(scene, arraycamera);
+
+        //render to the feedbackBufferEffect for the following frame
+        renderer.setRenderTarget(bufferFeedbackRender);
         renderer.render(scene, arraycamera);
     };
 
@@ -500,7 +511,9 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
 
             renderer.setRenderTarget(null);
             renderer.render(finalRenderScene, finalRenderCamera);
-            renderer.render(frameBufferScene, finalRenderCamera, frameBufferTexture);
+
+            //renderer.setRenderTarget(bufferFeedbackRender);
+            //renderer.render(bufferFeedbackScene, finalRenderCamera);
         }
     };
 
@@ -577,9 +590,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
     //Corey - Added
     var FragmentShaderCode =
         "uniform sampler2D quiltTexture;"+
-        //frame buffer effect
-        //"uniform sampler2D bufferQuiltTexture"+
-
+        "uniform sampler2D bufferQuiltTexture;"+
         "uniform float pitch;"+
         "uniform float tilt;"+
         "uniform float center;"+
@@ -615,6 +626,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
         "void main()"+
         "{"+
             "vec4 rgb[3];"+
+            "vec4 buffrgb[3];"+
             "vec3 nuv = vec3(iUv.xy, 0.0);"+
 
             //Flip UVs if necessary
@@ -626,9 +638,14 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
                 "nuv.z = mod(nuv.z + ceil(abs(nuv.z)), 1.0);"+
                 "nuv.z = (1.0 - invView) * nuv.z + invView * (1.0 - nuv.z);" +
                 "rgb[i] = texture2D(quiltTexture, texArr(vec3(iUv.x, iUv.y, nuv.z)));"+
+                "buffrgb[i] = texture2D(bufferQuiltTexture, texArr(vec3(iUv.x, iUv.y, nuv.z)));"+
             "}"+
-
-            "gl_FragColor = vec4(rgb[0].r, rgb[1].g, rgb[2].b, 1);"+
+            "vec3 renderedColor = vec3(rgb[0].r, rgb[1].g, rgb[2].b);"+
+            //set the buffer color and mix it with the other one
+            "vec3 bufferedColor = vec3(buffrgb[0].r, buffrgb[1].g, buffrgb[2].b);"+
+            "vec3 mixedColor = mix(bufferedColor, renderedColor, 0.01);"+
+            //gl_FragColor = vec4(rgb[0].r, rgb[1].g, rgb[2].b, 1);+
+            "gl_FragColor = vec4(renderedColor, 1.0);"+
         "}"
     ;
 
@@ -636,7 +653,7 @@ function HoloPlay(scene, camera, renderer, focalPointVector, constantCenter, hiR
     init();
 }
 
-
+// MUSIC VISUALIZER SCENE
 var scene, camera, renderer, holoplay;
 
 //Lighting elements
@@ -660,11 +677,46 @@ var displacementMult;
 
 var trackData;
 
+var screenBackground;
+var screenMaterial;
+
+var farPlane;
+var backgroundMaterial;
+
 //music visualization things
-var sync = new Sync();
+
+//DESCRIPTORS FROM SPOTIFY TRACK DATA
+//these are sometimes set to an object with a lot of constructor properties,
+//for the time being I need to check their type for them to work properly
+//
+
+var valence, energy, danceability;
+
+var barLength;
+
+const sync = new Sync();
 sync.on('tatum', tatum => {
+
+})
+
+sync.on('segment', segment => {
+
+})
+
+sync.on('beat', beat => {
   OnBeat();
 })
+
+sync.on('bar', bar => {
+  OnBar();
+})
+
+sync.on('section', section => {
+  OnSection();
+})
+
+
+
 
 //Initialize our variables
 function init(){
@@ -673,12 +725,30 @@ function init(){
   camera.position.set(0,0,20);
   renderer = new THREE.WebGLRenderer();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.autoClearColor = false;
+
+  screenMaterial = new THREE.MeshBasicMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.01, transparent: true, side: THREE.DoubleSide});
+  screenBackground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), screenMaterial);
+
+
+
+  backgroundMaterial = new THREE.MeshBasicMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.2, transparent: true, side: THREE.DoubleSide});
+  farPlane = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), backgroundMaterial);
+
+  screenBackground.position.z = -5;
+
+  //note - if the z position is too close to camera, the screen has different effects based on view position
+  farPlane.position.z = -100;
+  camera.add(screenBackground);
+  camera.add(farPlane);
+  scene.add(camera);
+
   document.body.appendChild(renderer.domElement);
   holoplay = new HoloPlay(scene, camera, renderer);
   directionalLight = new THREE.DirectionalLight(0xFFFFFF, 1);
   directionalLight.position.set (0, 1, 2);
   scene.add(directionalLight);
-  ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.4);
+  ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.1);
   scene.add(ambientLight);
 
 
@@ -690,7 +760,12 @@ function init(){
 
   uniforms = {
   					"amplitude": { value: 1.0 },
-  					"color": { value: new THREE.Color( 0xff2200 ) },
+  					"diffuseColor": { value: new THREE.Color( 0xff2200 ) },
+            "lightPos": {value: directionalLight.position},
+            "specColor": { value: new THREE.Color( 0xff2200 ) },
+            "ambientLightColor": {value: ambientLight.color},
+            "ambientLightIntensity": {value: ambientLight.intensity},
+            "cameraPos":{value: camera.position}
   };
   var shaderMaterial = new THREE.ShaderMaterial( {
     uniforms: uniforms,
@@ -718,8 +793,6 @@ function init(){
 
 
 
-  //music Viz -- init Sync
-  sync = new Sync();
 
   //console.log(sync.trackFeatures);
 
@@ -741,31 +814,75 @@ function draw(){
 
   //adjusting noise ball
   var time = Date.now() * 0.01;
+  icos.rotation.y = time * 0.1;
 
-  if (displacementMult > 0.1) {
-    displacementMult -= 0.05;
+  var barProgress = 0.0;
+
+  //check to see if valence is defined
+  if (typeof sync.features.valence === 'number') {
+    valence = sync.features.valence;
+  } else {
+    valence = 0.8;
   }
 
-  uniforms[ "amplitude" ].value = displacementMult + 0.3 * Math.sin( time * 0.01 * 0.125 );
-	uniforms[ "color" ].value.offsetHSL( 0.001 * Math.sin( time * 0.00001 ), 0, 0 );
+  //danceability is inversely proportional to the blur effect;
+  if (typeof sync.features.danceability === 'number') {
+    danceability = sync.features.danceability;
+    //console.log("danceable: " + danceability);
+  } else {
+    danceability = 0.3;
+  }
+
+  if (danceability > 0.5) {
+    renderer.autoClearColor = true;
+    //console.log("autoclear????");
+  } else {
+    renderer.autoClearColor = false;
+    console.log("don't clear");
+  }
+
+  sync.volumeSmoothing = (1.0-danceability) * 1000;
+
+  //console.log(sync.bar);
+  if(typeof sync.bar.duration === 'number') {
+    barLength = sync.bar.duration/1000;
+    barProgress = sync.bar.progress;
+    //console.log('barLength' + barLength);
+  }
+
+  if (displacementMult > 0) {
+    displacementMult -= 0.1;
+  }
+
+  uniforms[ "amplitude" ].value = displacementMult + 0.2 * Math.sin( time * 0.01 * 0.125 );
+  uniforms[ "lightPos" ].value = directionalLight.position;
+  uniforms[ "cameraPos" ].value = camera.position;
+  //Set lightness to the track's "valence"
+  //console.log(sync.features.valence);
+	uniforms[ "diffuseColor" ].value.setHSL( 0.5 + 0.3 * valence * Math.sin( time * valence * 0.1 ), valence, 0.5);
+  var icoColor = uniforms["diffuseColor"].value;
+  farPlane.material.color.setRGB(1.0 - icoColor.r, 1.0 - icoColor.g, 1.0 - icoColor.b);
 	for ( var i = 0; i < displacement.length; i ++ ) {
 	   displacement[ i ] = 0.1 * Math.sin( 0.1 * i + time ) + displacementMult;
+     displacement[ i ] -= 1.0 + 2.0 * (1.0-valence) * Math.sin(0.01 * time * Math.PI * 2 + i);
      noise[ i ] += 0.25 * ( 0.5 - Math.random() );
      noise[ i ] = THREE.Math.clamp( noise[ i ], - 1, 1 );
-     displacement[ i ] += (noise[ i ] * sync.volume);
+     displacement[ i ] += (noise[ i ] * (sync.volume));
 	}
 
   icos.geometry.attributes.displacement.needsUpdate = true;
 
-  GetTrackAnalysis();
 
+  screenBackground.material.opacity = 0.3 * (1.0-danceability) + (0.1 * Math.sin(barProgress * Math.PI));
   holoplay.render();
 }
 
 
 
 function OnBeat() {
-    displacementMult += 0.6;
+  if(displacementMult) {
+    displacementMult += 0.5 * danceability;
+  }
     //console.log("beat");
 }
 
@@ -773,9 +890,8 @@ function OnBar() {
 
 }
 
-function GetTrackAnalysis() {
-   //trackData = JSON.parse(sync.trackFeatures);
-   //console.log(sync.trackFeatures.valence);
+function OnSection() {
+  //change color scheme
 }
 
 //Game loop

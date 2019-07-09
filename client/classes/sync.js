@@ -50,7 +50,7 @@ export default class Sync {
 
       },
       trackFeatures: {
-        valence: {}
+
       },
       initialTrackProgress: 0,
       initialStart: 0,
@@ -290,6 +290,18 @@ export default class Sync {
 
   get section () {
     this.state.activeIntervals.sections
+  }
+
+  get track () {
+    return this.state.currentlyPlaying
+  }
+
+  get features () {
+    return this.state.trackFeatures
+  }
+
+  get analysis () {
+    return this.state.trackAnalysis
   }
 
   /**
