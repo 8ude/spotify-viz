@@ -5,6 +5,7 @@
 
 import * as THREE from 'three';
 import Sync from '../classes/sync';
+import * as dat from 'dat.gui';
 
 //Copyright 2017-2019 Looking Glass Factory Inc.
 //All rights reserved.
@@ -673,7 +674,7 @@ var icos;
 var displacement, noise;
 
 //adjust displacement on beat;
-var displacementMult;
+var beatMult;
 
 var trackData;
 
@@ -688,13 +689,16 @@ var backgroundMaterial;
 //DESCRIPTORS FROM SPOTIFY TRACK DATA
 //these are sometimes set to an object with a lot of constructor properties,
 //for the time being I need to check their type for them to work properly
-//
+
 
 var valence, energy, danceability;
 
-var barLength;
+var tatumLength, beatLength, barLength, sectionLength;
 
 const sync = new Sync();
+
+const TWEEN = require('@tweenjs/tween.js');
+
 sync.on('tatum', tatum => {
 
 })
@@ -715,8 +719,21 @@ sync.on('section', section => {
   OnSection();
 })
 
+//object for GUI manipulation
+var visualizerProperties = {
 
+}
 
+//buffer for tweened values
+var danceBallProperties = {
+  displacementScaling: 0.5,
+  noiseAmount: 0.5,
+  displacementSmoothing: 0.2,
+  rotateSpeed: 0.1
+}
+
+var baseRotateSpeed = 0.05;
+var beatAlternator = 0;
 
 //Initialize our variables
 function init(){
@@ -731,11 +748,10 @@ function init(){
   screenBackground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), screenMaterial);
 
 
-
-  backgroundMaterial = new THREE.MeshBasicMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.2, transparent: true, side: THREE.DoubleSide});
+  backgroundMaterial = new THREE.MeshLambertMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.2, transparent: true, side: THREE.DoubleSide});
   farPlane = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), backgroundMaterial);
 
-  screenBackground.position.z = -5;
+  screenBackground.position.z = 10;
 
   //note - if the z position is too close to camera, the screen has different effects based on view position
   farPlane.position.z = -100;
@@ -789,12 +805,16 @@ function init(){
 	icos = new THREE.Mesh( icoGeometry, shaderMaterial );
 	scene.add( icos );
 
-  displacementMult = 1.0;
+  beatMult = 1.0;
 
 
 
+  //init values for track data
+  valence = 0.5;
+  danceability = 0.3;
+  energy = 0.3;
 
-  //console.log(sync.trackFeatures);
+
 
 }
 
@@ -814,23 +834,21 @@ function draw(){
 
   //adjusting noise ball
   var time = Date.now() * 0.01;
-  icos.rotation.y = time * 0.1;
+  icos.rotation.y += baseRotateSpeed * energy * danceBallProperties.rotateSpeed;
+  icos.rotation.z += baseRotateSpeed * 1.5 * energy * danceBallProperties.rotateSpeed;
 
   var barProgress = 0.0;
 
   //check to see if valence is defined
   if (typeof sync.features.valence === 'number') {
     valence = sync.features.valence;
-  } else {
-    valence = 0.8;
+    energy = sync.features.energy;
   }
 
   //danceability is inversely proportional to the blur effect;
   if (typeof sync.features.danceability === 'number') {
     danceability = sync.features.danceability;
     //console.log("danceable: " + danceability);
-  } else {
-    danceability = 0.3;
   }
 
   if (danceability > 0.5) {
@@ -838,10 +856,9 @@ function draw(){
     //console.log("autoclear????");
   } else {
     renderer.autoClearColor = false;
-    console.log("don't clear");
   }
 
-  sync.volumeSmoothing = (1.0-danceability) * 1000;
+  sync.volumeSmoothing = (1.0-danceability) * 1000 + sync.features.acousticness * 1000;
 
   //console.log(sync.bar);
   if(typeof sync.bar.duration === 'number') {
@@ -850,22 +867,35 @@ function draw(){
     //console.log('barLength' + barLength);
   }
 
-  if (displacementMult > 0) {
-    displacementMult -= 0.1;
+  if (danceBallProperties.displacementScaling > 0) {
+
+    beatMult = danceBallProperties.displacementScaling;
+    danceBallProperties.displacementScaling -= 0.05;
+    //console.log(beatMult);
+
   }
 
-  uniforms[ "amplitude" ].value = displacementMult + 0.2 * Math.sin( time * 0.01 * 0.125 );
+  if (danceBallProperties.rotateSpeed > 0) {
+    danceBallProperties.rotateSpeed *= 0.99;
+    //console.log('rotate speed ' + danceBallProperties.rotateSpeed);
+  }
+
+  uniforms[ "amplitude" ].value = beatMult + 0.2 * Math.sin( time * 0.01 * 0.125 );
   uniforms[ "lightPos" ].value = directionalLight.position;
   uniforms[ "cameraPos" ].value = camera.position;
   //Set lightness to the track's "valence"
   //console.log(sync.features.valence);
 	uniforms[ "diffuseColor" ].value.setHSL( 0.5 + 0.3 * valence * Math.sin( time * valence * 0.1 ), valence, 0.5);
   var icoColor = uniforms["diffuseColor"].value;
-  farPlane.material.color.setRGB(1.0 - icoColor.r, 1.0 - icoColor.g, 1.0 - icoColor.b);
+
+
+  farPlane.material.color.setRGB(icoColor.r, icoColor.g, icoColor.b);
+  farPlane.material.color.offsetHSL(0.3, 0.0, 0.0);
+
 	for ( var i = 0; i < displacement.length; i ++ ) {
-	   displacement[ i ] = 0.1 * Math.sin( 0.1 * i + time ) + displacementMult;
-     displacement[ i ] -= 1.0 + 2.0 * (1.0-valence) * Math.sin(0.01 * time * Math.PI * 2 + i);
-     noise[ i ] += 0.25 * ( 0.5 - Math.random() );
+	   displacement[ i ] = beatMult;
+     displacement[ i ] -= 2.0 * (1.0-valence) * Math.sin(0.01 * time * Math.PI * 2 + i);
+     noise[ i ] += 0.25 * ( 0.5 - (Math.random()) );
      noise[ i ] = THREE.Math.clamp( noise[ i ], - 1, 1 );
      displacement[ i ] += (noise[ i ] * (sync.volume));
 	}
@@ -874,19 +904,49 @@ function draw(){
 
 
   screenBackground.material.opacity = 0.3 * (1.0-danceability) + (0.1 * Math.sin(barProgress * Math.PI));
+
+
+
   holoplay.render();
 }
 
 
 
 function OnBeat() {
-  if(displacementMult) {
-    displacementMult += 0.5 * danceability;
-  }
+
+  //console.log('danceability: ' + danceability);
+  beatAlternator++;
+
+
+  var maxDisplaceValue = Math.min(energy * energy, 1);
+
+  var tween = new TWEEN.Tween(danceBallProperties)
+      .to( {rotateSpeed: maxDisplaceValue}, 50)
+      .start();
+    //beatMult += 0.5 * danceability * danceability;
+
     //console.log("beat");
 }
 
 function OnBar() {
+  //TEST - move ball to a random location on every Bar\
+  var currentPos = new THREE.Vector3(icos.position.x, icos.position.y, icos.position.z);
+  //console.log(currentPos);
+  //console.log(bar);
+  //var barAlternator =
+  //tweened movement isn't working for some reason
+
+
+/*  var icoTween = new TWEEN.Tween(icos.position)
+    .to({
+      x: currentPos.x + 100 * Math.sin(Date.now() * 0.01),
+      y: currentPos.y + 0.1,
+      z: currentPos.z + 0.1 }, 100000)
+    .start();
+*/
+
+  //animateVector3(icos.position, new THREE.Vector3(icos.position.x + Math.random*3.0 - 0.5, icos.position.y + Math.random - 0.5, icos.position.z + Math.random - 0.5 ));
+
 
 }
 
@@ -894,9 +954,45 @@ function OnSection() {
   //change color scheme
 }
 
+/* Animates a Vector3 to the target */
+function animateVector3(vectorToAnimate, target, options){
+    console.log('animate vector 3');
+    options = options || {};
+    // get targets from options or set to defaults
+    var to = target || THREE.Vector3(),
+        easing = options.easing || TWEEN.Easing.Quadratic.In,
+        duration = options.duration || 2000;
+    // create the tween
+    var tweenVector3 = new TWEEN.Tween(vectorToAnimate)
+        .to({ x: to.x, y: to.y, z: to.z, }, duration)
+        .easing(easing)
+        .onUpdate(function(d) {
+            if(options.update){
+                options.update(d);
+            }
+         })
+        .onComplete(function(){
+          if(options.callback) options.callback();
+        });
+    // start the tween
+    tweenVector3.start();
+    // return the tween in case we want to manipulate it later on
+    return tweenVector3;
+}
+
+function UpdateTrackData() {
+
+}
+
+//MATH UTIL
+function mapRange(value, low1, high1, low2, high2) {
+    return low2 + (high2 - low2) * (value - low1) / (high1 - low1);
+}
+
 //Game loop
 function RunApp(){
   requestAnimationFrame(RunApp);
+  TWEEN.update();
   draw();
 }
 

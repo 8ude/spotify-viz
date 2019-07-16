@@ -43,7 +43,9 @@
         //vec3 normal = vec3(normalMat * vec4(inputNormal, 0.0));
         //vec4 vertPos4 = modelview * vec4(inputPosition, 1.0);
         //vec3 vertPos = vec3(vertPos4) / vertPos4.w;
-        vec3 lightDir = normalize(lightPos - position);
+        vec4 modelLightPos = modelViewMatrix * vec4(lightPos, 1.0);
+        vec3 lightDir = normalize(modelLightPos.xyz - newPosition);
+        //lightDir = lightDir * modelMatrix;
         vec3 reflectDir = reflect(-lightDir, normal);
         vec3 viewDir = normalize(cameraPos - position);
 
@@ -52,7 +54,7 @@
 
         if(lambertian > 0.0) {
           float specAngle = max(dot(reflectDir, viewDir), 0.0);
-          specular = pow(specAngle, 2.0);
+          specular = pow(specAngle, 4.0);
 
           // the exponent controls the shininess (try mode 2)
           //if(mode == 2)  specular = pow(specAngle, 16.0);
