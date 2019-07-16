@@ -661,10 +661,6 @@ var scene, camera, renderer, holoplay;
 var directionalLight;
 var ambientLight;
 
-//Scene objects
-var cubeGeometry;
-var cubeMaterial;
-var cubes;
 
 //shader uniforms
 var uniforms;
@@ -675,8 +671,6 @@ var displacement, noise;
 
 //adjust displacement on beat;
 var beatMult;
-
-var trackData;
 
 var screenBackground;
 var screenMaterial;
@@ -707,8 +701,8 @@ sync.on('segment', segment => {
 
 })
 
-sync.on('beat', beat => {
-  OnBeat();
+sync.on('beat', ({ index }) => {
+  OnBeat(index);
 })
 
 sync.on('bar', bar => {
@@ -721,22 +715,58 @@ sync.on('section', section => {
 
 //object for GUI manipulation
 var visualizerProperties = {
+  spacer: 'spacer',
+  spacer2: 'spacer2',
+  Song: 'unknown',
+  Artist:'unknown',
+  Album:'unknown',
+  trackEnergy: 0.1,
+  trackValence: 0.1,
+  trackDanceability: 0.1,
+  rotateSpeed: 0.05,
+  rotateBoost: 0.1,
+  cameraOrbitSpeed: 0,
+  numBalls: 1,
+  shaderNoisiness: 0.3,
+  shaderWaviness: 0.2,
+  shaderWaveSpeed: 0.5
 
 }
 
 //buffer for tweened values
-var danceBallProperties = {
+var danceBallBuffers = {
   displacementScaling: 0.5,
   noiseAmount: 0.5,
   displacementSmoothing: 0.2,
-  rotateSpeed: 0.1
+  rotateBoostBuffer: 0.1
 }
 
 var baseRotateSpeed = 0.05;
 var beatAlternator = 0;
+var startTime, time;
 
 //Initialize our variables
 function init(){
+
+  InitScene();
+  InitGUI();
+  InitGeometry();
+
+  //New Code - trying to get the buffer geo and shader to work
+
+  beatMult = 1.0;
+
+  //init values for track data
+  valence = 0.5;
+  danceability = 0.3;
+  energy = 0.3;
+  startTime = Date.now() * 0.001;
+  barLength = 2;
+}
+
+//Init Functions
+
+function InitScene() {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(12.5, window.innerWidth/window.innerHeight, 0.1, 1000);
   camera.position.set(0,0,20);
@@ -766,35 +796,35 @@ function init(){
   scene.add(directionalLight);
   ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.1);
   scene.add(ambientLight);
+}
 
-
-
-
-
-
-  //New Code - trying to get the buffer geo and shader to work
+//Initialize icosahedron geometry
+function InitGeometry() {
 
   uniforms = {
-  					"amplitude": { value: 1.0 },
+                      "amplitude": { value: 1.0 },
+                      "time": {value: 0.0},
+                      "waveSpeed":{value: visualizerProperties.shaderWaveSpeed},
+                      "waveIntensity":{value: visualizerProperties.shaderWaviness},
   					"diffuseColor": { value: new THREE.Color( 0xff2200 ) },
             "lightPos": {value: directionalLight.position},
             "specColor": { value: new THREE.Color( 0xff2200 ) },
             "ambientLightColor": {value: ambientLight.color},
             "ambientLightIntensity": {value: ambientLight.intensity},
-            "cameraPos":{value: camera.position}
+            "cameraPos":{value: camera.position},
+            "rainbowIntensity":{value: 0.0}
   };
+
   var shaderMaterial = new THREE.ShaderMaterial( {
     uniforms: uniforms,
     vertexShader: document.getElementById( 'vertexshader' ).textContent,
     fragmentShader: document.getElementById( 'fragmentshader' ).textContent
   } );
 
-  var icoGeometry = new THREE.IcosahedronBufferGeometry(1, 3);
+  var icoGeometry = new THREE.IcosahedronBufferGeometry(1, 4);
 
   displacement = new Float32Array( icoGeometry.attributes.position.count );
 	noise = new Float32Array( icoGeometry.attributes.position.count );
-
-
 
 	for ( var i = 0; i < displacement.length; i ++ ) {
 	   noise[ i ] = Math.random() * 5;
@@ -804,17 +834,34 @@ function init(){
 
 	icos = new THREE.Mesh( icoGeometry, shaderMaterial );
 	scene.add( icos );
+}
 
-  beatMult = 1.0;
+function InitGUI() {
+  var gui = new dat.GUI();
 
+  //can't seem to move dat.gui (holoplay issue? webpack issue?)
+  //currently occupies same space as full screen button, so I need to add a couple spacers
+  //var customContainer = document.getElementById('movegui');
+  //customContainer.appendChild(gui.domElement);
 
-
-  //init values for track data
-  valence = 0.5;
-  danceability = 0.3;
-  energy = 0.3;
-
-
+  var trackDataFolder = gui.addFolder('Track Data');
+  trackDataFolder.add(visualizerProperties, 'spacer').listen();
+  trackDataFolder.add(visualizerProperties, 'spacer2').listen();
+  trackDataFolder.add(visualizerProperties, 'Song').listen();
+  trackDataFolder.add(visualizerProperties, 'Artist').listen();
+  trackDataFolder.add(visualizerProperties, 'Album').listen();
+  trackDataFolder.add(visualizerProperties, 'trackEnergy').listen();
+  trackDataFolder.add(visualizerProperties, 'trackValence').listen();
+  trackDataFolder.add(visualizerProperties, 'trackDanceability').listen();
+  var globalControlFolder = gui.addFolder('Global Controls');
+  globalControlFolder.add(visualizerProperties, 'rotateBoost', 0, 1);
+  globalControlFolder.add(visualizerProperties, 'rotateSpeed', 0, 0.2);
+  globalControlFolder.add(visualizerProperties, 'cameraOrbitSpeed');
+  globalControlFolder.add(visualizerProperties, 'numBalls');
+  var shaderControlFolder = gui.addFolder('Shader Controls');
+  shaderControlFolder.add(visualizerProperties, 'shaderNoisiness');
+  shaderControlFolder.add(visualizerProperties, 'shaderWaviness', 0, 0.6);
+  shaderControlFolder.add(visualizerProperties, 'shaderWaveSpeed', 0, 4, 0.25);
 
 }
 
@@ -833,9 +880,10 @@ function draw(){
 
 
   //adjusting noise ball
-  var time = Date.now() * 0.01;
-  icos.rotation.y += baseRotateSpeed * energy * danceBallProperties.rotateSpeed;
-  icos.rotation.z += baseRotateSpeed * 1.5 * energy * danceBallProperties.rotateSpeed;
+  time = Date.now() * 0.001 - startTime;
+
+  icos.rotation.y += 0.1 * ( danceBallBuffers.rotateBoostBuffer * visualizerProperties.rotateBoost);
+  icos.rotation.z += visualizerProperties.rotateSpeed * 1.5 * ( danceBallBuffers.rotateBoostBuffer * visualizerProperties.rotateBoost);
 
   var barProgress = 0.0;
 
@@ -862,68 +910,95 @@ function draw(){
 
   //console.log(sync.bar);
   if(typeof sync.bar.duration === 'number') {
-    barLength = sync.bar.duration/1000;
+    //jumping bar lengths can cause jitteryness
+    var newBarLength = sync.bar.duration/1000;
+    if (Math.abs(newBarLength - barLength) > 0.5){
+        barLength = THREE.Math.lerp(barLength, sync.bar.duration/1000, 0.001);
+        console.log("targetBarLength = " + newBarLength);
+    } 
+    
     barProgress = sync.bar.progress;
-    //console.log('barLength' + barLength);
-  }
-
-  if (danceBallProperties.displacementScaling > 0) {
-
-    beatMult = danceBallProperties.displacementScaling;
-    danceBallProperties.displacementScaling -= 0.05;
-    //console.log(beatMult);
 
   }
 
-  if (danceBallProperties.rotateSpeed > 0) {
-    danceBallProperties.rotateSpeed *= 0.99;
-    //console.log('rotate speed ' + danceBallProperties.rotateSpeed);
+  if (danceBallBuffers.displacementScaling > 0) {
+
+    beatMult = danceBallBuffers.displacementScaling;
+    danceBallBuffers.displacementScaling -= 0.05;
+
+
+  }
+
+  if (danceBallBuffers.rotateBoostBuffer > 0) {
+    danceBallBuffers.rotateBoostBuffer *= (1 - (0.05 * visualizerProperties.rotateBoost));
+
   }
 
   uniforms[ "amplitude" ].value = beatMult + 0.2 * Math.sin( time * 0.01 * 0.125 );
+  uniforms["time"].value = time;
+
+
+
+  uniforms["waveSpeed"].value = (2 * Math.PI / barLength) * visualizerProperties.shaderWaveSpeed;
+  uniforms["waveIntensity"].value = visualizerProperties.shaderWaviness;
+
+
   uniforms[ "lightPos" ].value = directionalLight.position;
   uniforms[ "cameraPos" ].value = camera.position;
   //Set lightness to the track's "valence"
-  //console.log(sync.features.valence);
-	uniforms[ "diffuseColor" ].value.setHSL( 0.5 + 0.3 * valence * Math.sin( time * valence * 0.1 ), valence, 0.5);
+
+  uniforms[ "diffuseColor" ].value.setHSL( 0.5 + 0.3 * valence * Math.sin( time * valence * 0.1 ), valence, 0.5);
+  uniforms[ "rainbowIntensity" ].value = valence * valence;
+
   var icoColor = uniforms["diffuseColor"].value;
 
 
   farPlane.material.color.setRGB(icoColor.r, icoColor.g, icoColor.b);
-  farPlane.material.color.offsetHSL(0.3, 0.0, 0.0);
+  farPlane.material.color.offsetHSL(0.3, -(0.5-valence), -(0.5-valence));
 
 	for ( var i = 0; i < displacement.length; i ++ ) {
-	   displacement[ i ] = beatMult;
-     displacement[ i ] -= 2.0 * (1.0-valence) * Math.sin(0.01 * time * Math.PI * 2 + i);
-     noise[ i ] += 0.25 * ( 0.5 - (Math.random()) );
-     noise[ i ] = THREE.Math.clamp( noise[ i ], - 1, 1 );
-     displacement[ i ] += (noise[ i ] * (sync.volume));
+        displacement[ i ] = beatMult * THREE.Math.clamp(sync.volume, 0, 0.5);
+        var displacementChange = THREE.Math.clamp((2.0 * (1.0-valence)) * sync.volume, 0, 0.5);
+        displacement[ i ] -= displacementChange;
+        //waviness
+        //displacement[ i ] += visualizerProperties.shaderWaviness * Math.sin( 0.1 * time + (i / 1000));
+        noise[ i ] += visualizerProperties.shaderNoisiness * ( 0.5-(Math.random()));
+        noise[ i ] = THREE.Math.clamp( noise[ i ], 0, 0.75 );
+        displacement[ i ] += (noise[ i ] * (sync.volume));
 	}
 
   icos.geometry.attributes.displacement.needsUpdate = true;
 
 
-  screenBackground.material.opacity = 0.3 * (1.0-danceability) + (0.1 * Math.sin(barProgress * Math.PI));
+  screenBackground.material.opacity = 0.4 * (1.0-danceability) + (0.1 * Math.sin(barProgress * Math.PI));
 
 
 
   holoplay.render();
 }
 
+//Initialization functions
 
 
-function OnBeat() {
 
+//Beat Timing Functions
+function OnBeat(index) {
+
+  //if (index % 2 === 0) console.log('off');
   //console.log('danceability: ' + danceability);
   beatAlternator++;
 
 
   var maxDisplaceValue = Math.min(energy * energy, 1);
 
-  var tween = new TWEEN.Tween(danceBallProperties)
-      .to( {rotateSpeed: maxDisplaceValue}, 50)
+  var tween = new TWEEN.Tween(danceBallBuffers)
+      .to( {rotateBoostBuffer: maxDisplaceValue}, 80)
       .start();
-    //beatMult += 0.5 * danceability * danceability;
+
+
+  var tween = new TWEEN.Tween(danceBallBuffers)
+      .to( {displacementScaling: maxDisplaceValue}, 200)
+      .start();
 
     //console.log("beat");
 }
@@ -981,7 +1056,13 @@ function animateVector3(vectorToAnimate, target, options){
 }
 
 function UpdateTrackData() {
+    visualizerProperties.Song = sync.track.name;
+    visualizerProperties.Artist = sync.track.artists[0].name;
+    visualizerProperties.Album = sync.track.album.name;
+    visualizerProperties.trackEnergy = sync.features.energy;
 
+    visualizerProperties.trackValence = sync.features.valence;
+    visualizerProperties.trackDanceability = sync.features.danceability;
 }
 
 //MATH UTIL
@@ -993,6 +1074,7 @@ function mapRange(value, low1, high1, low2, high2) {
 function RunApp(){
   requestAnimationFrame(RunApp);
   TWEEN.update();
+  UpdateTrackData();
   draw();
 }
 

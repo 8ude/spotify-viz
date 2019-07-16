@@ -10,3 +10,4 @@ html, body, canvas {
   left: 0;
   overflow: hidden; }
 
+  gui { position: absolute; top: 100px; left: 100px }
