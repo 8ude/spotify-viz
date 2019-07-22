@@ -20,6 +20,7 @@
       uniform float time;
       uniform float amplitude;
       uniform float waveIntensity;
+      uniform float waveSeed;
       uniform float waveSpeed;
       uniform vec3 lightPos;
       uniform vec3 diffuseColor;
@@ -39,7 +40,7 @@
           vNormal = normal;
           vUv = ( 0.5 + amplitude ) * uv + vec2( amplitude );
           vec3 newPosition = position + amplitude * normal * vec3( displacement );
-          vec3 waveVector = vec3(sin(waveSpeed * (time + position.x)) * normal.x, sin(waveSpeed * (time + position.y)) * normal.y, sin(waveSpeed * (time + position.z)) * normal.z);
+          vec3 waveVector = vec3(sin(waveSpeed * (time + position.x + waveSeed)) * normal.x, sin(waveSpeed * (time + position.y + waveSeed)) * normal.y, sin(waveSpeed * (time + position.z + waveSeed)) * normal.z);
           newPosition += waveIntensity * waveVector;
           gl_Position = projectionMatrix * modelViewMatrix * vec4( newPosition, 1.0 );
 

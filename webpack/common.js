@@ -10,6 +10,7 @@ const webpack = require('webpack')
 module.exports = {
   entry: [
     'regenerator-runtime',
+    './client/js/OrbitControls.js',
     './client/index.js',
     './client/sass/main.scss',
     './client/js/helloholo.js'
