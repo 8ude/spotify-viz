@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import Sync from '../classes/sync';
 import * as dat from 'dat.gui';
+import { OneMinusDstAlphaFactor } from 'three';
 
 
 //Copyright 2017-2019 Looking Glass Factory Inc.
@@ -666,8 +667,16 @@ var uniforms;
 //icosahedron with moving vertices
 var icos;
 
-//new version with 3 icosahedrons
-var testBall, testBall2, testBall3, testBall4;
+//new version with multiple icosahedrons
+var testBall, testBall2, testBall3, testBall4, testball5;
+//array of ball objects
+var spaceBalls = [];
+var foreGroundBallGroup;
+var backgroundBalls = [];
+var numBackgroundBalls = 50;
+var backgroundBallGroup;
+
+//trying something with 2 pairs
 
 var displacement, noise;
 
@@ -685,7 +694,9 @@ var topLandscape, bottomLandscape;
 var xZoom = 8;
 var yZoom = 180;
 var noiseStrength = 1;
-var volume, previousVolume;
+var volume, previousVolume, volumeSmoothing;
+
+var firstSectionPlayed;
 
 //music visualization things
 
@@ -698,6 +709,8 @@ var valence, energy, danceability;
 
 var tatumLength, beatLength, barLength, sectionLength;
 
+var barProgress;
+
 const sync = new Sync();
 
 const TWEEN = require('@tweenjs/tween.js');
@@ -705,6 +718,7 @@ var SimplexNoise = require('simplex-noise');
 var simplex;
 
 var visualizerMode = 0;
+var blurOn = true;
 
 sync.on('tatum', tatum => {
 
@@ -728,22 +742,29 @@ sync.on('section', section => {
 
 //object for GUI manipulation
 var visualizerProperties = {
-  spacer: 'spacer',
-  spacer2: 'spacer2',
-  Song: 'unknown',
-  Artist:'unknown',
-  Album:'unknown',
-  trackEnergy: 0.1,
-  trackValence: 0.1,
-  trackDanceability: 0.1,
-  rotateSpeed: 0.05,
-  rotateBoost: 0.1,
-  cameraOrbitSpeed: 0,
-  landscapeWaves: 1,
-  numBalls: 1,
-  shaderNoisiness: 0.3,
-  shaderWaviness: 0.5,
-  shaderWaveSpeed: 0.5
+    spacer: 'spacer',
+    spacer2: 'spacer2',
+    Song: 'unknown',
+    Artist:'unknown',
+    Album:'unknown',
+    trackEnergy: 0.1,
+    trackValence: 0.1,
+    trackDanceability: 0.1,
+    trackSectionProgress: 0.01,
+    rotateSpeed: 0.05,
+    rotateBoost: 0.1,
+    spaceBallOrbitDistance: 0.7,
+    //Colors
+    foregroundBallDiffuse: new THREE.Color(1, 0.3, 0.0),
+    backgroundDiffuse: new THREE.Color(1, 0.3, 0.5),
+    directionalLightColor: new THREE.Color( 0xff2200 ),
+
+    //landscapeWaves: 1,
+    //numBalls: 1,
+    shaderNoisiness: 0.3,
+    shaderWaviness: 0.5,
+    shaderWaveSpeed: 0.5,
+    shaderSpikiness: 0.3
 
 }
 
@@ -766,11 +787,11 @@ function init(){
   InitGUI();
   InitGeometry();
 
-  bottomLandscape = new InitPlane(-6);
-  topLandscape = new InitPlane(3.5);
+  //bottomLandscape = new InitPlane(-6);
+  //topLandscape = new InitPlane(3.5);
 
-  camera.add( bottomLandscape );
-  camera.add( topLandscape );
+  //camera.add( bottomLandscape );
+  //camera.add( topLandscape );
 
   // controls
   controls = new OrbitControls( camera, renderer.domElement );
@@ -780,11 +801,11 @@ function init(){
   controls.screenSpacePanning = false;
   controls.minDistance = 20;
   controls.maxDistance = 25;
-  controls.target = icos.position;
+  controls.target = new THREE.Vector3(0,0,0);
   controls.enablePan = false;
   controls.rotateSpeed = 0.02;
-  controls.autoRotate = true;
-  controls.autoRotateSpeed = 0.02
+  controls.autoRotate = false;
+  controls.autoRotateSpeed = 0.03;
 
   //New Code - trying to get the buffer geo and shader to work
 
@@ -798,95 +819,86 @@ function init(){
   barLength = 2;
   volume = 0;
   previousVolume = 0;
+  firstSectionPlayed = false;
   //visualizerSwitch();
 }
 
 //Init Functions
 
 function InitScene() {
-  scene = new THREE.Scene();
-  camera = new THREE.PerspectiveCamera(12.5, window.innerWidth/window.innerHeight, 0.1, 1000);
-  camera.position.set(0,0,20);
-  renderer = new THREE.WebGLRenderer();
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.autoClearColor = false;
 
-  screenMaterial = new THREE.MeshBasicMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.01, transparent: true, side: THREE.DoubleSide});
-  screenBackground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), screenMaterial);
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(12.5, window.innerWidth/window.innerHeight, 0.1, 1000);
+    camera.position.set(0,0,20);
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.autoClearColor = false;
+
+    screenMaterial = new THREE.MeshBasicMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.01, transparent: true, side: THREE.DoubleSide});
+    screenBackground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), screenMaterial);
 
 
-  backgroundMaterial = new THREE.MeshLambertMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.2, transparent: true, side: THREE.DoubleSide});
-  farPlane = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), backgroundMaterial);
+    backgroundMaterial = new THREE.MeshLambertMaterial({color: new THREE.Color(1.0, 1.0, 1.0), opacity: 0.2, transparent: true, side: THREE.DoubleSide});
+    farPlane = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), backgroundMaterial);
 
-  screenBackground.position.z = 1000;
+    screenBackground.position.z = 1000;
 
-  //note - if the z position is too close to camera, the screen has different effects based on view position
-  farPlane.position.z = -1000;
-  camera.add(screenBackground);
-  camera.add(farPlane);
-  scene.add(camera);
+    //note - if the z position is too close to camera, the screen has different effects based on view position
+    farPlane.position.z = -1000;
+    camera.add(screenBackground);
+    camera.add(farPlane);
+    scene.add(camera);
 
-  document.body.appendChild(renderer.domElement);
-  holoplay = new HoloPlay(scene, camera, renderer);
-  directionalLight = new THREE.DirectionalLight(0xFFFFFF, 3);
-  directionalLight.rotation.set(-Math.PI/2, 0, 0);
-  directionalLight.position.set (0, 0, 2);
-  
+    document.body.appendChild(renderer.domElement);
+    holoplay = new HoloPlay(scene, camera, renderer);
+    directionalLight = new THREE.DirectionalLight(0xFFFFFF, 3);
+    directionalLight.rotation.set(-Math.PI/2, 0, 0);
+    directionalLight.position.set (0, 0, 2);
 
- 
-  scene.add(directionalLight);
-  ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.3);
-  scene.add(ambientLight);
-  simplex = new SimplexNoise();
+
+
+    scene.add(directionalLight);
+    ambientLight = new THREE.AmbientLight(0xFFFFFF, 0.3);
+    scene.add(ambientLight);
+    simplex = new SimplexNoise();
 }
 
-//Initialize icosahedron geometry
+//Initialize scene geometry
 function InitGeometry() {
-
-  uniforms = {
-                      "amplitude": { value: 1.0 },
-                      "time": {value: 0.0},
-                      "waveSpeed":{value: visualizerProperties.shaderWaveSpeed},
-                      "waveSeed":{value: 0.5},
-                      "waveIntensity":{value: visualizerProperties.shaderWaviness},
-  					"diffuseColor": { value: new THREE.Color( 0xff2200 ) },
-            "lightPos": {value: directionalLight.position},
-            "specColor": { value: new THREE.Color( 0xff2200 ) },
-            "ambientLightColor": {value: ambientLight.color},
-            "ambientLightIntensity": {value: ambientLight.intensity},
-            "cameraPos":{value: camera.position},
-            "rainbowIntensity":{value: 0.0}
-  };
-
-  var shaderMaterial = new THREE.ShaderMaterial( {
-    uniforms: uniforms,
-    vertexShader: document.getElementById( 'vertexshader' ).textContent,
-    fragmentShader: document.getElementById( 'fragmentshader' ).textContent
-  } );
-
-  var icoGeometry = new THREE.IcosahedronBufferGeometry(1, 4);
-
-  displacement = new Float32Array( icoGeometry.attributes.position.count );
-	noise = new Float32Array( icoGeometry.attributes.position.count );
-
-	for ( var i = 0; i < displacement.length; i ++ ) {
-	   noise[ i ] = Math.random() * 5;
-	}
-
-  icoGeometry.addAttribute( 'displacement', new THREE.BufferAttribute( displacement, 1 ) );
-
-	icos = new THREE.Mesh( icoGeometry, shaderMaterial );
-    //scene.add( icos );
     
-    testBall = new SmallReactorBall(0, new THREE.Vector3(0, 1, 1), 0.75, 3);
-    testBall2 = new SmallReactorBall(1, new THREE.Vector3(0, -1, 1), 0.75, 3);
-    testBall3 = new SmallReactorBall(1, new THREE.Vector3(0, -1, -1), 0.75, 3);
-    testBall4 = new SmallReactorBall(1, new THREE.Vector3(0, 1, -1), 0.75, 3);
+    testBall = new SmallReactorBall(0, new THREE.Vector3(0, 0.6, 0.6), 0.3, 3);
+    testBall2 = new SmallReactorBall(1, new THREE.Vector3(0, -0.6, 0.6), 0.75, 3);
+    testBall3 = new SmallReactorBall(1, new THREE.Vector3(0, -1, 0 ), 0.8, 3);
+    testBall4 = new SmallReactorBall(1, new THREE.Vector3(0, 1, -1), 0.2, 3);
+
+
+    spaceBalls.push(testBall, testBall2, testBall3, testBall4);
+
+    foreGroundBallGroup = new THREE.Group();
+    foreGroundBallGroup.add(testBall, testBall2, testBall3, testBall4);
+
+    for (var i = 0; i < numBackgroundBalls; i++ ) {
+        //putting the tiny ball at a random point on a sphere
+        var angle = Math.random() * 2 * Math.PI;
+        var altitude = Math.random() * 2 * Math.PI;
+        var newPosition = new THREE.Vector3(
+            20.0 * Math.sin(angle) * Math.cos(altitude),
+            20.0 * Math.sin(angle) * Math.sin(altitude),
+            20.0 * Math.cos(angle)
+        );
+        var newBackgroundBall = new SmallReactorBall(4 + i, newPosition, 0.2, 1);
+        backgroundBalls.push(newBackgroundBall);
+        console.log ('new background ball: ' + newPosition.x);
+    }
+
+
 }
 
 //genericizing reactor ball
 class SmallReactorBall{
     constructor (ballIndex, orbitPosition, icoSize, icoSubs){
+        this.orbitPosition = orbitPosition;
+        this.orbitSpeed = Math.random() - 0.5;
         //shader uniforms
         let seed = Math.random() * 3.0 + 0.9;
         this.uniforms = {
@@ -921,7 +933,7 @@ class SmallReactorBall{
         this.index = ballIndex;
 
         let rotateSeed = Math.random() * 0.5;
-        this.icos.rotation.y;
+        //this.icos.rotation.y;
         
 	    scene.add( this.icos );
 
@@ -936,32 +948,44 @@ class SmallReactorBall{
         this.icos.rotation.y += 0.1 * ( danceBallBuffers.rotateBoostBuffer * visualizerProperties.rotateBoost) * (1.1-rotateSeed);
         this.icos.rotation.z += visualizerProperties.rotateSpeed * 1.5 * ( danceBallBuffers.rotateBoostBuffer * visualizerProperties.rotateBoost) * (1.1-rotateSeed);
         
-        this.uniforms[ "amplitude" ].value = beatMult + 0.2 * Math.sin( time * 0.01 * 0.125 );
+        this.uniforms[ "amplitude" ].value = beatMult;
+        //beatMult + 0.2 * Math.sin( time * 0.01 * 0.125 );
         this.uniforms["time"].value = time;
 
         this.uniforms["waveSpeed"].value = (2 * Math.PI / barLength) * visualizerProperties.shaderWaveSpeed;
         this.uniforms["waveIntensity"].value = visualizerProperties.shaderWaviness;
+
+        this.uniforms[ "diffuseColor" ].value = visualizerProperties.foregroundBallDiffuse;
+        this.uniforms[ "specColor" ].value = visualizerProperties.directionalLightColor;
 
 
         this.uniforms[ "lightPos" ].value = directionalLight.position;
         this.uniforms[ "cameraPos" ].value = camera.position;
         //Set lightness to the track's "valence"
 
-        this.uniforms[ "diffuseColor" ].value.setHSL( 0.5 + 0.3 * valence * Math.sin( time * valence ), valence, 0.5);
+        
         this.uniforms[ "rainbowIntensity" ].value = valence * valence;
 
-        for ( var i = 0; i < displacement.length; i ++ ) {
-            this.displacement[ i ] = beatMult * THREE.Math.clamp(sync.volume, 0, 0.5);
-            let displacementChange = THREE.Math.clamp((2.0 * (1.0-valence)) * sync.volume, 0, 0.5);
+        for ( var i = 0; i < this.displacement.length; i ++ ) {
+            this.displacement[ i ] = beatMult * THREE.Math.clamp(volumeSmoothing, 0, 0.5);
+            let displacementChange = THREE.Math.clamp((2.0 * (1.0-valence)) * volumeSmoothing, 0, 0.5);
             this.displacement[ i ] -= displacementChange;
             //waviness
             //displacement[ i ] += visualizerProperties.shaderWaviness * Math.sin( 0.1 * time + (i / 1000));
             this.noise[ i ] += visualizerProperties.shaderNoisiness * ( 0.5-(Math.random()));
-            this.noise[ i ] = THREE.Math.clamp( this.noise[ i ], 0, 0.75 );
-            this.displacement[ i ] += (this.noise[ i ] * (sync.volume));
+            this.noise[ i ] = THREE.Math.clamp( this.noise[ i ], 0, energy );
+
+            this.displacement[ i ] += (this.noise[ i ] * (volumeSmoothing));
         }
     
         this.icos.geometry.attributes.displacement.needsUpdate = true;
+
+        //revolve around origin point
+        this.icos.position.set(
+            this.orbitPosition.x + visualizerProperties.spaceBallOrbitDistance * Math.sin(time * this.orbitSpeed),
+            this.orbitPosition.y + visualizerProperties.spaceBallOrbitDistance * Math.sin(time * this.orbitSpeed * this.orbitSpeed),
+            this.orbitPosition.z + 0.5 * visualizerProperties.spaceBallOrbitDistance * Math.sin(time * this.orbitSpeed / 2)
+            );
     
     }
 }
@@ -983,16 +1007,20 @@ function InitGUI() {
   trackDataFolder.add(visualizerProperties, 'trackEnergy').listen();
   trackDataFolder.add(visualizerProperties, 'trackValence').listen();
   trackDataFolder.add(visualizerProperties, 'trackDanceability').listen();
+  trackDataFolder.add(visualizerProperties, 'trackSectionProgress').listen();
+
   var globalControlFolder = gui.addFolder('Global Controls');
   globalControlFolder.add(visualizerProperties, 'rotateBoost', 0, 1);
   globalControlFolder.add(visualizerProperties, 'rotateSpeed', 0, 0.2);
-  globalControlFolder.add(visualizerProperties, 'cameraOrbitSpeed');
-  globalControlFolder.add(visualizerProperties, 'numBalls');
-  globalControlFolder.add(visualizerProperties, 'landscapeWaves', 0,2);
+  globalControlFolder.add(visualizerProperties, 'spaceBallOrbitDistance', 0, 1).listen();
+  //globalControlFolder.add(visualizerProperties, 'numBalls');
+  //globalControlFolder.add(visualizerProperties, 'landscapeWaves', 0,2);
+
   var shaderControlFolder = gui.addFolder('Shader Controls');
-  shaderControlFolder.add(visualizerProperties, 'shaderNoisiness');
-  shaderControlFolder.add(visualizerProperties, 'shaderWaviness', 0, 0.6);
-  shaderControlFolder.add(visualizerProperties, 'shaderWaveSpeed', 0, 4, 0.25);
+  shaderControlFolder.add(visualizerProperties, 'shaderSpikiness', 0, 1.0).listen();
+  shaderControlFolder.add(visualizerProperties, 'shaderWaviness', 0, 0.6).listen();
+  shaderControlFolder.add(visualizerProperties, 'shaderWaveSpeed', 0, 4, 0.25).listen();
+  shaderControlFolder.add(visualizerProperties, 'shaderNoisiness', 0, 1.0).listen();
 
 }
 
@@ -1037,121 +1065,120 @@ function draw(){
     //adjusting noise ball
     time = Date.now() * 0.001 - startTime;
 
-    icos.rotation.y += 0.1 * ( danceBallBuffers.rotateBoostBuffer * visualizerProperties.rotateBoost);
-    icos.rotation.z += visualizerProperties.rotateSpeed * 1.5 * ( danceBallBuffers.rotateBoostBuffer * visualizerProperties.rotateBoost);
+    UpdateCachedSongVariables();
+    
 
-    var barProgress = 0.0;
-
-    if (typeof sync.volume === 'number') {
-        volume = sync.volume;
-    }
-    //check to see if valence is defined
-    if (typeof sync.features.valence === 'number') {
-    valence = sync.features.valence;
-    energy = sync.features.energy;
-    }
-
-    //danceability is inversely proportional to the blur effect;
-    if (typeof sync.features.danceability === 'number') {
-    danceability = sync.features.danceability;
-    //console.log("danceable: " + danceability);
-    }
-
-    if (danceability > 0.5) {
-    renderer.autoClearColor = true;
-    //console.log("autoclear????");
-    } else {
-    renderer.autoClearColor = false;
-    }
-
-    sync.volumeSmoothing = (1.0-danceability) * 1000 + sync.features.acousticness * 1000;
-
-    //console.log(sync.bar);
-    if(typeof sync.bar.duration === 'number') {
-    //jumping bar lengths can cause jitteryness
-    var newBarLength = sync.bar.duration/1000;
-    if (Math.abs(newBarLength - barLength) > 0.5){
-        barLength = THREE.Math.lerp(barLength, sync.bar.duration/1000, 0.001);
-        //console.log("targetBarLength = " + newBarLength);
-    } 
-
-    barProgress = sync.bar.progress;
-
-    }
-
-    if (danceBallBuffers.displacementScaling > 0) {
-
-    beatMult = danceBallBuffers.displacementScaling;
-    danceBallBuffers.displacementScaling -= 0.05;
+    //var icoColor = testBall.uniforms["diffuseColor"].value;
 
 
-    }
+    //farPlane.material.color.setRGB(icoColor.r, icoColor.g, icoColor.b);
+    farPlane.material.color.setHSL(0.5, valence * Math.sin(sync.section.progress * Math.PI) + (0.5 * valence), -(0.5-valence));
+    //bottomLandscape.material.color = farPlane.material.color;
+    //bottomLandscape.material.color.offsetHSL(0.0,0.1,0.3);
 
-    if (danceBallBuffers.rotateBoostBuffer > 0) {
-    danceBallBuffers.rotateBoostBuffer *= (1 - (0.05 * visualizerProperties.rotateBoost));
-
-    }
-
-    uniforms[ "amplitude" ].value = beatMult + 0.2 * Math.sin( time * 0.01 * 0.125 );
-    uniforms["time"].value = time;
-
-
-
-    uniforms["waveSpeed"].value = (2 * Math.PI / barLength) * visualizerProperties.shaderWaveSpeed;
-    uniforms["waveIntensity"].value = visualizerProperties.shaderWaviness;
-
-
-    uniforms[ "lightPos" ].value = directionalLight.position;
-    uniforms[ "cameraPos" ].value = camera.position;
-    //Set lightness to the track's "valence"
-
-    uniforms[ "diffuseColor" ].value.setHSL( 0.5 + 0.3 * valence * Math.sin( time * valence ), valence, 0.5);
-    uniforms[ "rainbowIntensity" ].value = valence * valence;
-
-    var icoColor = testBall.uniforms["diffuseColor"].value;
-
-
-    farPlane.material.color.setRGB(icoColor.r, icoColor.g, icoColor.b);
-    farPlane.material.color.offsetHSL(0.3, -(0.5-valence), -(0.5-valence));
-    bottomLandscape.material.color = farPlane.material.color;
-    bottomLandscape.material.color.offsetHSL(0.0,0.1,0.3);
-    var newHSL = {};
-    bottomLandscape.material.color.getHSL(newHSL);
+    //var newHSL = {};
+    //bottomLandscape.material.color.getHSL(newHSL);
     //want to clamp color so that it isn't just fully white;
-    bottomLandscape.material.color.setHSL(newHSL.h, newHSL.s, Math.min(newHSL.l, 0.7));
-    topLandscape.material.color = bottomLandscape.material.color;
+    //bottomLandscape.material.color.setHSL(newHSL.h, newHSL.s, Math.min(newHSL.l, 0.7));
+    //topLandscape.material.color = bottomLandscape.material.color;
 
-    for ( var i = 0; i < displacement.length; i ++ ) {
-        displacement[ i ] = beatMult * THREE.Math.clamp(sync.volume, 0, 0.5);
-        var displacementChange = THREE.Math.clamp((2.0 * (1.0-valence)) * sync.volume, 0, 0.5);
-        displacement[ i ] -= displacementChange;
-        //waviness
-        //displacement[ i ] += visualizerProperties.shaderWaviness * Math.sin( 0.1 * time + (i / 1000));
-        noise[ i ] += visualizerProperties.shaderNoisiness * ( 0.5-(Math.random()));
-        noise[ i ] = THREE.Math.clamp( noise[ i ], 0, 0.75 );
-        displacement[ i ] += (noise[ i ] * (sync.volume));
+    if (blurOn) {
+        screenBackground.material.opacity = 0.4 * (1.0-danceability) + (0.1 * Math.sin(barProgress * Math.PI));
     }
 
-    icos.geometry.attributes.displacement.needsUpdate = true;
+    //adjustLandscapeVertices(bottomLandscape, time);
+    //adjustLandscapeVertices(topLandscape, time);
 
 
-    screenBackground.material.opacity = 0.4 * (1.0-danceability) + (0.1 * Math.sin(barProgress * Math.PI));
 
-    adjustLandscapeVertices(bottomLandscape, time);
-    adjustLandscapeVertices(topLandscape, time);
+    UpdateGeometry();
 
-    testBall.Update();
-    testBall2.Update();
-    testBall3.Update();
-    testBall4.Update();
 
     holoplay.render();
 
 
 }
 
+function UpdateCachedSongVariables() {
+    
+
+    if (typeof sync.volume === 'number') {
+        volume = sync.volume;
+        if (!isFinite(volume)) {
+            volume = 0.0;
+        }
+        volumeSmoothing = THREE.Math.lerp(previousVolume, volume, 0.3);
+        THREE.Math.clamp(volumeSmoothing, 0.0, 4);
+        previousVolume = volume;
+
+
+        //console.log("volume smoothing: " + volumeSmoothing);
+
+    }
+    //check to see if valence is defined
+    if (typeof sync.features.valence === 'number') {
+        valence = sync.features.valence;
+        energy = sync.features.energy;
+        danceability = sync.features.danceability;
+    }
+
+    //danceability is inversely proportional to the blur effect;
+    if (danceability > 0.5) {
+        renderer.autoClearColor = true;
+        //console.log("autoclear????");
+    } else {
+        renderer.autoClearColor = false;
+    }
+
+    sync.volumeSmoothing = (1.0-danceability) * 1000 + sync.features.acousticness * 1000;
+
+    //console.log(sync.bar);
+    if(typeof sync.bar.duration === 'number') {
+        //jumping bar lengths can cause jitteryness
+        var newBarLength = sync.bar.duration/1000;
+        if (Math.abs(newBarLength - barLength) > 0.5){
+            barLength = THREE.Math.lerp(barLength, sync.bar.duration/1000, 0.001);
+            //console.log("targetBarLength = " + newBarLength);
+        } 
+        barProgress = sync.bar.progress;
+
+        //console.log(sync.section);
+        visualizerProperties.trackSectionProgress = sync.section.progress;
+
+        visualizerProperties.shaderWaviness = 0.5 * Math.sin((sync.section.progress * (2 * Math.PI)) - Math.PI/2) + 0.6; 
+    }
+
+    if (danceBallBuffers.displacementScaling > 0) {
+
+        beatMult = danceBallBuffers.displacementScaling;
+        danceBallBuffers.displacementScaling -= 0.05;
+
+    }
+
+    if (danceBallBuffers.rotateBoostBuffer > 0) {
+        danceBallBuffers.rotateBoostBuffer *= (1 - (0.05 * visualizerProperties.rotateBoost));
+    }
+}
+
+function UpdateGeometry()
+{
+    testBall.Update();
+    testBall2.Update();
+    testBall3.Update();
+    testBall4.Update();
+
+    foreGroundBallGroup.rotation.x = 2 * Math.PI * Math.sin(sync.section.duration * 2 * Math.PI);
+    foreGroundBallGroup.rotation.y = 2 * Math.PI * Math.sin(sync.section.duration * Math.PI);
+    foreGroundBallGroup.rotation.z = 2 * Math.PI * Math.sin(sync.section.duration * Math.PI);
+
+    for (var i = 0; i < numBackgroundBalls; i ++){
+        backgroundBalls[i].Update();
+    }
+}
+
+
 function adjustLandscapeVertices(plane, offset) {
-    let volumeSmoothing = THREE.Math.lerp(previousVolume, volume, 0.3);
+    let volumeSmoothing = THREE.Math.lerp(previousVolume, volume, 0.1);
     previousVolume = volumeSmoothing;
 
     for (let i = 0; i < plane.geometry.vertices.length; i++) {
@@ -1200,32 +1227,100 @@ function OnBeat(index) {
 }
 
 function OnBar() {
-  //TEST - move ball to a random location on every Bar\
-  var currentPos = new THREE.Vector3(icos.position.x, icos.position.y, icos.position.z);
-  //console.log(currentPos);
-  //console.log(bar);
-  //var barAlternator =
-  //tweened movement isn't working for some reason
-
-
-/*  var icoTween = new TWEEN.Tween(icos.position)
-    .to({
-      x: currentPos.x + 100 * Math.sin(Date.now() * 0.01),
-      y: currentPos.y + 0.1,
-      z: currentPos.z + 0.1 }, 100000)
-    .start();
-*/
-
-  //animateVector3(icos.position, new THREE.Vector3(icos.position.x + Math.random*3.0 - 0.5, icos.position.y + Math.random - 0.5, icos.position.z + Math.random - 0.5 ));
-
-
+    //console.log("bar: " + sync.bar.index);
+    //Revolve ojbects?
 }
 
 function OnSection() {
-  //change color scheme
+    //console.log(sync.section.index);
+
+    //there's an issue with section[0] - it's called on every update
+    if (sync.section.index === 0) 
+    {
+        //check if we've played the transition once; if yes - return; otherwise - run the transition;
+        if (!firstSectionPlayed)
+        {
+            firstSectionPlayed = true;
+        } else {
+            return;
+        }
+        
+        let newHue = 0.2 + 0.3 * valence * Math.sin( (sync.track.progress/Math.PI) * valence);
+
+        visualizerProperties.foregroundBallDiffuse.setHSL(newHue, valence, 0.5 );
+
+        visualizerProperties.directionalLightColor.setHSL(newHue, 1-valence, valence);
+
+        //testBall.uniforms[ "diffuseColor" ].value.setHSL( 0.2 + 0.3 * valence * Math.sin( (sync.track.progress/Math.PI) * valence ), valence, 0.5);
+
+        //testBall.uniforms[ "rainbowIntensity" ].value = valence * valence * (Math.cos(sync.track.progress/4 * Math.PI) * 0.5 + 0.5);
+
+        let newWaveSpeed = 0.25 * ( Math.floor ( Math.random() * 16 ) - 8 );
+        visualizerProperties.shaderWaveSpeed = newWaveSpeed;
+
+
+    } else {
+        //if index !== 0, reset the boolean flag
+        firstSectionPlayed = false;
+    }
+
+
+    //change color scheme
+    //hue -- 
+
+
+    let newWaveSpeed = 0.25 * ( Math.floor ( Math.random() * 16 ) - 8 );
+    visualizerProperties.shaderWaveSpeed = newWaveSpeed;
+
+
+  
 }
 
-/* Animates a Vector3 to the target */
+
+
+
+document.addEventListener('buttonUp', function(e){
+    if (e.name === "circle") VisualizerSwitch();
+    //console.log("Button name: " + e.name + " Button index: " + e.index);
+});
+
+function VisualizerSwitch() {
+    visualizerMode += 1;
+    if (visualizerMode > 2) {
+        visualizerMode = 0
+    }
+
+    if (visualizerMode === 0) {
+        //foregroundIcosahedrons only
+        //icos.visible = true;
+        //bottomLandscape.visible = false;
+        //topLandscape.visible = false;
+    }
+    else if (visualizerMode === 1) {
+        //both foreground and background, blur off
+        //icos.visible = false;
+        //bottomLandscape.visible = true;
+        //topLandscape.visible = true;
+    }
+    else if (visualizerMode === 2) {
+        //all visible, blur on
+        //icos.visible = true;
+        //bottomLandscape.visible = true;
+        //topLandscape.visible = true;
+    }
+}
+
+function UpdateTrackData() {
+    visualizerProperties.Song = sync.track.name;
+    visualizerProperties.Artist = sync.track.artists[0].name;
+    visualizerProperties.Album = sync.track.album.name;
+    visualizerProperties.trackEnergy = sync.features.energy;
+
+    visualizerProperties.trackValence = sync.features.valence;
+    visualizerProperties.trackDanceability = sync.features.danceability;
+}
+
+/* Test Tween - Animates a Vector3 to the target */
 function animateVector3(vectorToAnimate, target, options){
     console.log('animate vector 3');
     options = options || {};
@@ -1251,47 +1346,6 @@ function animateVector3(vectorToAnimate, target, options){
     return tweenVector3;
 }
 
-document.addEventListener('buttonUp', function(e){
-    if (e.name === "circle") VisualizerSwitch();
-    //console.log("Button name: " + e.name + " Button index: " + e.index);
-});
-
-function VisualizerSwitch() {
-    visualizerMode += 1;
-    if (visualizerMode > 2) {
-        visualizerMode = 0
-    }
-
-    if (visualizerMode === 0) {
-        //icosahedron only
-        icos.visible = true;
-        bottomLandscape.visible = false;
-        topLandscape.visible = false;
-    }
-    else if (visualizerMode === 1) {
-        //landscape only
-        icos.visible = false;
-        bottomLandscape.visible = true;
-        topLandscape.visible = true;
-    }
-    else if (visualizerMode === 2) {
-        //all visible
-        icos.visible = true;
-        bottomLandscape.visible = true;
-        topLandscape.visible = true;
-    }
-}
-
-function UpdateTrackData() {
-    visualizerProperties.Song = sync.track.name;
-    visualizerProperties.Artist = sync.track.artists[0].name;
-    visualizerProperties.Album = sync.track.album.name;
-    visualizerProperties.trackEnergy = sync.features.energy;
-
-    visualizerProperties.trackValence = sync.features.valence;
-    visualizerProperties.trackDanceability = sync.features.danceability;
-}
-
 //MATH UTIL
 function mapRange(value, low1, high1, low2, high2) {
     return low2 + (high2 - low2) * (value - low1) / (high1 - low1);
@@ -1308,3 +1362,5 @@ function RunApp(){
 
 init();
 RunApp();
+
+
