@@ -1,8 +1,7 @@
 {
   "name": "holomusicviz",
-  "version": "0.8",
+  "version": "0.8.1",
   "description": "3D holographic music visualizer, powered by Spotify.",
-  "main": "web.js",
   "scripts": {
     "start": "node ./server/index.js",
     "serve": "concurrently \"node ./server/index.js\" \"webpack-dev-server --config ./webpack/dev.js\"",
