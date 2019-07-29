@@ -1,3 +1,7 @@
+# HoloMusicViz (working title)
+
+This is an extension/build off of Zach Winter's spotify-viz work, made for the Looking Glass holographic display.  In addition to Zach's work on the backend + Spotify communication, it uses Three.js and Holoplay.js libraries for 3D content.  
+
 # spotify-viz
 > Create realtime audio-reactive visuals, powered by Spotify.
 

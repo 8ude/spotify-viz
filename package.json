@@ -1,7 +1,7 @@
 {
-  "name": "spotify-viz",
-  "version": "1.2.0",
-  "description": "Create realtime audio-reactive visuals, powered by Spotify.",
+  "name": "holomusicviz",
+  "version": "0.8",
+  "description": "3D holographic music visualizer, powered by Spotify.",
   "scripts": {
     "start": "node ./server/index.js",
     "serve": "concurrently \"node ./server/index.js\" \"webpack-dev-server --config ./webpack/dev.js\"",
@@ -17,7 +17,7 @@
     "es6",
     "html5"
   ],
-  "author": "Zach Winter",
+  "author": "Corey Bertelsen",
   "license": "MIT",
   "dependencies": {
     "@tweenjs/tween.js": "^17.4.0",
