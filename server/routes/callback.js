@@ -13,7 +13,9 @@ router.get('/', (req, res) => {
       grant_type: 'authorization_code'
     },
     headers: {
-      'Authorization': 'Basic ' + (new Buffer(process.env.CLIENT_ID + ':' + process.env.CLIENT_SECRET).toString('base64'))
+      'Authorization': 'Basic ' + (new Buffer('ebfb05d396d74bc381d86c9465326692' + ':' + '3fb0f1e810b14abfb84dd73ad36bae5a').toString('base64'))
+
+      //'Authorization': 'Basic ' + (new Buffer(process.env.CLIENT_ID + ':' + process.env.CLIENT_SECRET).toString('base64'))
     },
     json: true
   }
