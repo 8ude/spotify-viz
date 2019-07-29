@@ -1,1 +1,1 @@
-web: node dist/app.min.js
+web: node webpack/common.js
