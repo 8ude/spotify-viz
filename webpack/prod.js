@@ -12,4 +12,9 @@ module.exports = merge(common, {
     //path: path.resolve(__dirname, '../dist'),
     //filename: 'app.min.js'
   },
+  devtool: 'inline-source-map',
+  devServer: {
+    contentBase: path.resolve(__dirname, '../serve'),
+    port: process.env.CLIENT_PORT || 8080
+  }
 })
