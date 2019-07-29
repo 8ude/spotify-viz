@@ -1,1 +1,1 @@
-web: node server/index.js
+web: node dist/app.min.js
