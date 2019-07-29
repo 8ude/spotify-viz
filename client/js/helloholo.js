@@ -879,22 +879,12 @@ function InitGeometry() {
 
     for (var i = 0; i < numBackgroundBalls; i++ ) {
         //putting the tiny ball at a random point on a sphere
-        var x = 20.0 * Math.random();
-        var y = 20.0 * Math.random();
-        var z = 20.0 * Math.random();
-
-        var denom = Math.sqrt(x*x + y*y + z*z);
-
-        x = x / denom;
-        y = y / denom;
-        z = z / denom;
-
         var angle = Math.random() * 2 * Math.PI;
         var altitude = Math.random() * 2 * Math.PI;
         var newPosition = new THREE.Vector3(
-            x,
-            y,
-            z
+            20.0 * Math.sin(angle) * Math.cos(altitude),
+            20.0 * Math.sin(angle) * Math.sin(altitude),
+            20.0 * Math.cos(angle)
         );
         var newBackgroundBall = new SmallReactorBall(4 + i, newPosition, 0.2, 1);
         backgroundBalls.push(newBackgroundBall);
